@@ -36,7 +36,7 @@ const STEPS = [
     note: 'On its way into the context — the persistent store keeps bytes and counters across turns and processes.',
     code: `const smelter = createSmelter({
   defaultBudgetBytes: 8_000,
-  store: new DirectoryElisionStore('.smelt/store'),
+  store: new DirectoryElisionStore('${facts.recipe.storeDir}'),
 });
 
 const result = await smelter.smelt(rawToolOutput, {
@@ -87,7 +87,8 @@ s.allElisionsRetrieved;
  */
 const TIERS = facts.tiers;
 
-const MCP_CMD = 'claude mcp add smelt -- npx @smeltjs/mcp';
+/** The MCP registration command is a recipe fact (facts.json), never typed here. */
+const MCP_CMD = facts.recipe.mcpRegister;
 
 export function Harness() {
   return (

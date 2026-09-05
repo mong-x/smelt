@@ -9,6 +9,11 @@ assets/*.svg
 # bench corpus — byte-exact committed tool outputs; formatting them would falsify them
 packages/core/bench/corpus/
 
+# the SkillPack — rendered byte-for-byte by scripts/generate-skill.mjs from the built
+# SetupRecipe; a formatter's reflow would make the committed skill disagree with its
+# own generator, and the guard that compares them would be referee to a formatting war.
+/skills/
+
 # the site's app sources are its own world — but its build-time generators are not:
 # root verify runs site/scripts/facts-data.mjs (the site-facts guard spawns it), so the
 # code verify executes is formatted and linted like everything else verify executes.

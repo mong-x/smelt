@@ -1,0 +1,174 @@
+name: publish
+
+# A tag is the release action. Nothing publishes by hand: the gate runs on the exact
+# commit the tag names, and npm sees bytes only after verify and the fresh-clone check
+# are both green — the two checks the publishing checklist used to demand of a human
+# standing at a keyboard.
+#
+# What publishes is the packed tarball, not the directory: the sha256 the Homebrew
+# formula records is computed from the very bytes npm serves, so the formula can never
+# vouch for a rebuild that differs. The MCP package's prepublishOnly guard (the
+# workspace:^ substitution that shipped broken in 0.1.0) runs explicitly before the
+# pack, because publishing a tarball does not run lifecycle scripts.
+#
+# Owner one-time setup: an NPM_TOKEN secret (automation token, npmjs.org), and a
+# smeltjs/tap repository seeded from packaging/homebrew/smelt.rb — see CONTRIBUTING.
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: verify the tagged commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # format:check, lint, build, typecheck, test, mutate — the whole gate, ending
+      # with the mutation suite. npm gets nothing from a red tick.
+      - run: pnpm verify
+
+  fresh-clone:
+    name: fresh clone (tracked files only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      # Catches a release that works only because of something that was never
+      # committed — the same check every push to main already runs.
+      - run: bash scripts/check-fresh-clone.sh
+
+  publish-core:
+    name: publish @smeltjs/core
+    needs: [verify, fresh-clone]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      sha256: ${{ steps.release.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: pnpm install --frozen-lockfile
+
+      # prepack is the release build: it populates dist/ and all fifteen grammars/,
+      # and regenerates THIRD-PARTY.md, so the packed bytes are what prepack produced
+      # and nothing else.
+      - name: pack the release tarball
+        id: release
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          TARBALLS="$RUNNER_TEMP/tarballs"
+          mkdir -p "$TARBALLS"
+          pnpm --filter @smeltjs/core run prepack
+          pnpm --filter @smeltjs/core pack --pack-destination "$TARBALLS"
+          TARBALL="$TARBALLS/smeltjs-core-$VERSION.tgz"
+          test -f "$TARBALL" || { echo "packed no $TARBALL"; exit 1; }
+          SHA256="$(shasum -a 256 "$TARBALL" | cut -d' ' -f1)"
+          echo "core $VERSION packed; sha256 $SHA256"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+
+      - name: publish the packed bytes
+        run: pnpm publish "${{ steps.release.outputs.tarball }}" --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-mcp:
+    name: publish @smeltjs/mcp
+    needs: publish-core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: pnpm install --frozen-lockfile
+
+      # The workspace:^ substitution happened at pack time on core, and mcp's own
+      # dependency names core through the workspace protocol too — so mcp's tarball is
+      # packed the same way, after the guard that exists because 0.1.0 shipped the
+      # unsubstituted range. Publishing a tarball does not run lifecycle scripts, so
+      # the guard runs here, explicitly, where its refusal still stops the release.
+      - name: run the workspace:^ publish guard
+        run: pnpm --filter @smeltjs/mcp run prepublishOnly
+
+      - name: build, pack, publish
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          TARBALLS="$RUNNER_TEMP/tarballs"
+          mkdir -p "$TARBALLS"
+          pnpm --filter "@smeltjs/mcp..." run build
+          pnpm --filter @smeltjs/mcp pack --pack-destination "$TARBALLS"
+          pnpm publish "$TARBALLS/smeltjs-mcp-$VERSION.tgz" --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  formula:
+    name: render the tap formula
+    needs: publish-core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: render packaging/homebrew/smelt.rb for the release
+        run: |
+          node scripts/render-formula.mjs \
+            "${{ needs.publish-core.outputs.version }}" \
+            "${{ needs.publish-core.outputs.sha256 }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-formula
+          path: packaging/homebrew/smelt.rb
+
+      # The rendered formula is an artifact, not an auto-commit: the tap repository is
+      # the maintainer's to push to, and a release that could push to two repos from
+      # one token is more write access than a formula is worth. Seed and update
+      # smeltjs/tap from this artifact — the commands are in CONTRIBUTING.

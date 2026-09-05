@@ -145,10 +145,17 @@ export interface CliIo {
    */
   readonly cwd?: string;
   /**
-   * Interactive input for `smelt init` — the wizard reads answers line by line, which
-   * the one-shot `stdin()` above cannot provide. `bin.ts` passes the real stdin
-   * stream; tests pass a scripted one. Absent means `init` is a usage error.
-   * See {@link AnswerStream} for why the type is structural.
+   * Interactive input for the wizards — `init`, `hooks`, `agents split`, `setup` —
+   * which read answers line by line, which the one-shot `stdin()` above cannot
+   * provide. `bin.ts` passes the real stdin stream; tests pass a scripted one.
+   * Absent means a wizard verb is a usage error (or, for setup, that only `--yes`
+   * can answer it). See {@link AnswerStream} for why the type is structural.
    */
   readonly initInput?: AnswerStream;
+  /**
+   * True when stdout is an interactive, colour-honouring terminal and `NO_COLOR` is
+   * unset — the lava renderer's only switch. Absent or false, every wizard's bytes
+   * are exactly what they have always been; `bin.ts` computes it once.
+   */
+  readonly color?: boolean;
 }

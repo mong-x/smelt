@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 // Through @guard, so a mutation can point this at a deliberately broken registry.
 import { harnessById, harnessesByTier } from '@guard/harness/registry';
+import { SETUP_RECIPE, SETUP_STEPS } from '@guard/setup/recipe';
 
 import type { GuardMutation } from './_mutations.ts';
 import { guardRoot, packageRoot, repoRoot } from './_source.ts';
@@ -63,6 +64,25 @@ interface Facts {
   readonly structuralLanguages: readonly string[];
   readonly grammars: readonly string[];
   readonly guards: { readonly guards: number; readonly mutations: number };
+  readonly recipe: {
+    readonly installLibrary: string;
+    readonly installPnpm: string;
+    readonly installBun: string;
+    readonly installGlobal: string;
+    readonly oneShot: string;
+    readonly brewInstall: string;
+    readonly brewUpgrade: string;
+    readonly skillInstall: string;
+    readonly recommendedBudgetBytes: number;
+    readonly storeDir: string;
+    readonly mcpRun: string;
+    readonly mcpRegister: string;
+    readonly steps: readonly {
+      readonly id: string;
+      readonly title: string;
+      readonly command: string;
+    }[];
+  };
 }
 
 /** What the generator emits right now — the real script, as a subprocess. */
@@ -186,6 +206,25 @@ describe('the site states the packages, and nothing it made up', () => {
     expect(facts.grammars.length).toBeGreaterThanOrEqual(10);
     expect(facts.guards.guards).toBeGreaterThanOrEqual(12);
     expect(facts.guards.mutations).toBeGreaterThan(facts.guards.guards);
+    // The recipe facts are the built module's, character for character — the prompts
+    // and install lines render these, so a site-side retelling would be the second
+    // owner the setup-recipe guard exists to refuse.
+    expect(facts.recipe.storeDir).toBe(SETUP_RECIPE.store.defaultDir);
+    expect(facts.recipe.installGlobal).toBe(SETUP_RECIPE.install.globalInstall);
+    expect(facts.recipe.installLibrary).toBe(SETUP_RECIPE.install.library);
+    expect(facts.recipe.installPnpm).toBe(SETUP_RECIPE.install.libraryPnpm);
+    expect(facts.recipe.installBun).toBe(SETUP_RECIPE.install.libraryBun);
+    expect(facts.recipe.oneShot).toBe(SETUP_RECIPE.install.oneShot);
+    expect(facts.recipe.brewInstall).toBe(SETUP_RECIPE.install.brewInstall);
+    expect(facts.recipe.brewUpgrade).toBe(SETUP_RECIPE.install.brewUpgrade);
+    expect(facts.recipe.skillInstall).toBe(SETUP_RECIPE.install.skillInstall);
+    expect(facts.recipe.mcpRun).toBe(SETUP_RECIPE.mcp.run);
+    expect(facts.recipe.mcpRegister).toBe(SETUP_RECIPE.mcp.register);
+    expect(facts.recipe.recommendedBudgetBytes).toBe(SETUP_RECIPE.recommendedBudgetBytes);
+    expect(facts.recipe.steps.map((step) => step.id)).toEqual(SETUP_STEPS.map((step) => step.id));
+    for (const step of facts.recipe.steps) {
+      expect(step.command, `recipe step ${step.id} renders no command`).toBeTruthy();
+    }
   });
 
   it('no site component states a tier of its own', () => {

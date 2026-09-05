@@ -14,13 +14,38 @@ export const SNIPPET_END_HASH = '# smelt:hooks v1 end';
 export const OURS_TOKEN = 'smelt:hooks';
 
 /**
+ * The version stamp, as the block's second line: which release wrote these bytes.
+ * The markers above stay byte-stable across releases — an upgrade must find the old
+ * block to replace it — so the version travels *inside* the block, where replacing
+ * the block replaces it. `smelt doctor` reads it back with {@link snippetStampVersion};
+ * a block without the line was written before stamping existed, and doctor says so
+ * instead of guessing a version nobody recorded.
+ */
+export const SNIPPET_STAMP_LINE = (version: string): string =>
+  `<!-- smelt:hooks written-by @smeltjs/core ${version} -->`;
+
+/** The version a block was written by, or `undefined` when it predates stamping. */
+export function snippetStampVersion(text: string): string | undefined {
+  return /<!-- smelt:hooks written-by @smeltjs\/core (\d+\.\d+\.\d+)(?:[-+][^>]*)? -->/u.exec(
+    text,
+  )?.[1];
+}
+
+/**
  * The instruction snippet — belt and braces under every shim, and the *only* layer
  * for advisory harnesses. It teaches the three commands, and in particular what to do
  * after a guard deny: run the named replacement, then `smelt retrieve` per marker.
+ * `writtenBy` stamps the block for `smelt doctor`; omitted (legacy callers) the block
+ * simply carries no version line.
  */
-export function instructionSnippet(thresholdBytes: number, budgetBytes: number): string {
+export function instructionSnippet(
+  thresholdBytes: number,
+  budgetBytes: number,
+  writtenBy?: string,
+): string {
+  const stamp = writtenBy === undefined ? '' : `${SNIPPET_STAMP_LINE(writtenBy)}\n`;
   return `${SNIPPET_START_MD}
-
+${stamp}
 ## smelt — context discipline
 
 This project uses [smelt](https://github.com/smeltjs/smelt) to keep large tool output

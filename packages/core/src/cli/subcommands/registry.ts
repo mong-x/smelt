@@ -3,6 +3,8 @@ import { CLI_NAME } from '../shell.ts';
 
 import { agentsCommand } from './agents.ts';
 import type { AgentsInvocation } from './agents.ts';
+import { doctorCommand } from './doctor.ts';
+import type { DoctorInvocation } from './doctor.ts';
 import { flagList, VERB_FLAGS } from './flags.ts';
 import type { FlagName, FlagValues, VerbFlag } from './flags.ts';
 import { hooksCommand } from './hooks.ts';
@@ -15,6 +17,8 @@ import { retrieveCommand } from './retrieve.ts';
 import type { RetrieveInvocation } from './retrieve.ts';
 import { smeltCommand } from './smelt.ts';
 import type { SmeltInvocation } from './smelt.ts';
+import { setupCommand } from './setup.ts';
+import type { SetupInvocation } from './setup.ts';
 import { statsCommand } from './stats.ts';
 import type { StatsInvocation } from './stats.ts';
 import { DEFAULT_VERB } from './subcommand.ts';
@@ -41,6 +45,8 @@ export const SUBCOMMANDS: Readonly<Record<Verb, AnySubcommand>> = {
   stats: statsCommand,
   hooks: hooksCommand,
   agents: agentsCommand,
+  setup: setupCommand,
+  doctor: doctorCommand,
 };
 
 /** Everything `parseSmeltArgs` can return. Narrow on `mode`. */
@@ -51,7 +57,9 @@ export type CliInvocation =
   | RetrieveInvocation
   | StatsInvocation
   | HooksInvocation
-  | AgentsInvocation;
+  | AgentsInvocation
+  | SetupInvocation
+  | DoctorInvocation;
 
 /**
  * One registry entry, with its verb's own invocation and resolved types erased.
@@ -102,6 +110,8 @@ const VERB_BY_MODE = {
   stats: 'stats',
   hooks: 'hooks',
   agents: 'agents',
+  setup: 'setup',
+  doctor: 'doctor',
 } as const satisfies Record<Exclude<CliInvocation['mode'], 'help' | 'version'>, Verb>;
 
 /** The command that produced an invocation, for dispatch. */

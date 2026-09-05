@@ -1,12 +1,13 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-import { CliUsageError } from '../errors.ts';
 import { DEFAULT_STRATEGY, STRATEGIES } from '../plan/planners.ts';
 import type { Strategy } from '../plan/planners.ts';
 import { STRUCTURAL_LANGUAGES } from '../plan/structural.ts';
+import { SETUP_RECIPE } from '../setup/recipe.ts';
 
-import { answerReader, CLI_NAME } from './shell.ts';
+import { CLI_NAME } from './shell.ts';
+import { wizardAsk } from './wizard.ts';
 import type { AnswerStream } from './shell.ts';
 import {
   CONFIG_FILE_NAME,
@@ -109,18 +110,13 @@ export async function runInit(io: InitIo): Promise<number> {
   // `answerReader` — not `Readable.from` + readline — because the wizard must *let go*
   // of stdin when it is done. See the note on `answerReader` for the hang that shape
   // caused: files written, `Done.` printed, and the process never exiting.
-  const lines = answerReader(io.input);
-  const ask = async (prompt: string): Promise<string> => {
-    io.output(prompt);
-    const next = await lines.next();
-    if (next === undefined) {
-      throw new CliUsageError(
-        `${CLI_NAME} init: input ended before the wizard finished. ` +
-          `Files already confirmed and written stay; nothing further was written.`,
-      );
-    }
-    return next.trim();
-  };
+  const wizard = wizardAsk(
+    io.input,
+    io.output,
+    `${CLI_NAME} init: input ended before the wizard finished. ` +
+      `Files already confirmed and written stay; nothing further was written.`,
+  );
+  const ask = wizard.ask;
 
   try {
     const existing = loadExisting(io.cwd);
@@ -128,7 +124,7 @@ export async function runInit(io: InitIo): Promise<number> {
       ? await freshRun(io, ask)
       : await editRun(io, ask, existing.path, existing.config);
   } finally {
-    await lines.release();
+    await wizard.release();
   }
 }
 
@@ -397,7 +393,8 @@ async function stepStore(io: InitIo, ask: Asker, choices: WizardChoices): Promis
       return 'ok';
     }
     if (pick === '2') {
-      const previous = choices.store.kind === 'directory' ? choices.store.path : '.smelt/store';
+      const previous =
+        choices.store.kind === 'directory' ? choices.store.path : SETUP_RECIPE.store.defaultDir;
       const path = await ask(`store directory, relative to ${CONFIG_FILE_NAME} [${previous}]> `);
       if (path === 'back') continue; // back to the store choice, not out of the step
       choices.store = { kind: 'directory', path: path === '' ? previous : path };

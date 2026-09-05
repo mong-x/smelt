@@ -11,7 +11,8 @@ import type { FlagValues, VerbFlag } from './flags.ts';
  * Order is meaningful: it is the order `--help` renders every derived list in, and the
  * order a refusal names owners in. Keep it stable and append new verbs at the end.
  */
-export type Verb = 'smelt' | 'init' | 'map' | 'retrieve' | 'stats' | 'hooks' | 'agents';
+export type Verb =
+  'smelt' | 'init' | 'map' | 'retrieve' | 'stats' | 'hooks' | 'agents' | 'setup' | 'doctor';
 
 /** The verb a bare invocation selects — a file or stdin, with no subcommand word. */
 export const DEFAULT_VERB = 'smelt' satisfies Verb;

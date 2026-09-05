@@ -35,7 +35,7 @@ import type { GuardMutation } from './_mutations.ts';
  * a registry that is its own witness proves nothing.
  */
 
-/** Restated by hand: the seven verbs, and a minimal way to invoke each. */
+/** Restated by hand: the eight verbs, and a minimal way to invoke each. */
 const SHIPPED: Record<Verb, readonly string[]> = {
   smelt: [],
   init: ['init'],
@@ -44,6 +44,8 @@ const SHIPPED: Record<Verb, readonly string[]> = {
   stats: ['stats'],
   hooks: ['hooks', 'install'],
   agents: ['agents', 'lint'],
+  setup: ['setup'],
+  doctor: ['doctor'],
 };
 const SHIPPED_VERBS = Object.keys(SHIPPED).toSorted();
 
@@ -56,6 +58,8 @@ const FLAG_ARGV: Record<VerbFlag, readonly string[]> = {
   ignore: ['--ignore', 'vendor'],
   cache: ['--cache', '.smelt-tags'],
   harness: ['--harness', 'codex'],
+  yes: ['--yes'],
+  'no-mcp': ['--no-mcp'],
   strict: ['--strict'],
   json: ['--json'],
   reconstruct: ['--reconstruct'],
@@ -70,6 +74,8 @@ const OWNED: Record<Verb, readonly VerbFlag[]> = {
   stats: ['json'],
   hooks: ['harness'],
   agents: ['strict', 'json'],
+  setup: ['harness', 'yes', 'no-mcp', 'json'],
+  doctor: ['json'],
 };
 
 /** How a verb is named in its own refusal — the default verb has no word to use. */
@@ -197,8 +203,11 @@ describe('every verb refuses every flag it does not own — the whole cross prod
     expect(() => parseSmeltArgs(['--budget', '4000', '--ignore', '.git'])).toThrow(
       /--ignore and --cache belong to `smelt map`/,
     );
+    // `--harness` used to belong to hooks alone, and the refusal named it; setup
+    // owns it now too, so the actionable clause is correctly gone for it — a flag
+    // with two owners cannot be sent to one place.
     expect(() => parseSmeltArgs(['--budget', '4000', '--harness', 'codex'])).toThrow(
-      /--harness belongs to `smelt hooks`/,
+      /got --harness/,
     );
     // And from a *named* verb, where the clause is not the refusing verb's own
     // complement: `hooks` lacks --budget/--focus/--json too, but map does not own them

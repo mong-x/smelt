@@ -131,12 +131,48 @@ export async function renderFacts(root = REPO_ROOT) {
   const grammars = [...new Set(Object.values(smelt.WASM_BY_LANGUAGE))].toSorted();
   if (grammars.length === 0) throw new Error('the language registry names no bundled grammars');
 
+  // The SetupRecipe (CONTEXT.md): the commands and defaults every setup rendering
+  // repeats. The components read them from here, so a changed command edits the
+  // recipe module and this line follows — never the other way round.
+  const recipe = smelt.SETUP_RECIPE;
+  const recipeFacts = {
+    installLibrary: recipe.install?.library,
+    installPnpm: recipe.install?.libraryPnpm,
+    installBun: recipe.install?.libraryBun,
+    installGlobal: recipe.install?.globalInstall,
+    oneShot: recipe.install?.oneShot,
+    brewInstall: recipe.install?.brewInstall,
+    brewUpgrade: recipe.install?.brewUpgrade,
+    skillInstall: recipe.install?.skillInstall,
+    recommendedBudgetBytes: recipe.recommendedBudgetBytes,
+    storeDir: recipe.store?.defaultDir,
+    mcpRun: recipe.mcp?.run,
+    mcpRegister: recipe.mcp?.register,
+    steps: (smelt.SETUP_STEPS ?? []).map((step) => ({
+      id: step.id,
+      title: step.title,
+      command: step.command,
+    })),
+  };
+  for (const [key, value] of Object.entries(recipeFacts)) {
+    const empty = Array.isArray(value)
+      ? value.length === 0
+      : value === undefined || value === null || value === '';
+    if (empty) {
+      throw new Error(
+        `the recipe fact "${key}" is missing from @smeltjs/core — the site cannot render ` +
+          `a fact the package does not state`,
+      );
+    }
+  }
+
   return {
     versions: { core: version(core, CORE_MANIFEST), mcp: version(mcp, MCP_MANIFEST) },
     tiers,
     structuralLanguages,
     grammars,
     guards: { guards: guards.guards, mutations: guards.mutations },
+    recipe: recipeFacts,
   };
 }
 

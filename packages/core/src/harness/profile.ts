@@ -136,6 +136,8 @@ export function harnessLabel(profile: HarnessProfile): string {
 export interface HarnessInstallContext {
   /** Project directory: every path a renderer emits is portable relative to it. */
   readonly cwd: string;
+  /** The release writing these bytes — stamped into shared blocks for `smelt doctor`. */
+  readonly writtenBy?: string;
   readonly guard: boolean;
   readonly statsOnStop: boolean;
   readonly mapOnStart: boolean;
@@ -152,9 +154,11 @@ export type HarnessFileContent = (ctx: HarnessInstallContext) => string;
 /**
  * One artefact `hooks install` writes. The kind is also the un-write: `json-hooks` is
  * merged in and strip-merged out, `marker-block` is upserted and stripped,
- * `own-file` is written and deleted.
+ * `own-file` is written and deleted, `mcp-registration` is nested-merged in and
+ * lifted back out.
  */
-export type HarnessInstallStep = HarnessJsonHooks | HarnessMarkerBlock | HarnessOwnFile;
+export type HarnessInstallStep =
+  HarnessJsonHooks | HarnessMarkerBlock | HarnessOwnFile | HarnessMcpRegistration;
 
 /**
  * A JSON settings/hooks file the harness reads. Our entries are merged in
@@ -214,6 +218,25 @@ export interface HarnessOwnFile {
   readonly mode?: number;
   /** True when the file exists only to wire the guard — the guard toggle gates it. */
   readonly guardOnly: boolean;
+}
+
+/**
+ * An MCP server registration inside a JSON config the harness reads — Claude Code's
+ * `.mcp.json` (`mcpServers.smelt`), opencode's `opencode.json` (`mcp.smelt`). The
+ * entry is merged in byte-faithfully beside any other servers the user registered,
+ * and on `remove` it is lifted back out; a container this install created empty is
+ * removed with it, so a file that never carried the key round-trips byte-identical.
+ * Harnesses whose registration is TOML (Codex, Grok) do not declare this step — a
+ * hand-edit into TOML is exactly the edit `text/json-edit.ts` exists to refuse.
+ */
+export interface HarnessMcpRegistration {
+  readonly kind: 'mcp-registration';
+  /** Project-relative path of the config file. */
+  readonly file: string;
+  /** The container key, then the server's name: `['mcpServers', 'smelt']`. */
+  readonly path: readonly [string, string];
+  /** The server entry as a JSON value — the bytes are the editor's. */
+  readonly entry: (ctx: HarnessInstallContext) => unknown;
 }
 
 /**

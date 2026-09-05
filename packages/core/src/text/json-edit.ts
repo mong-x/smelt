@@ -65,6 +65,7 @@ export function editTopLevelProperty(
   key: string,
   value: unknown,
   style: JsonStyle = jsonStyle(text),
+  valueIndent: string = style.indent,
 ): string | undefined {
   const scan = scanJsonTopLevel(text);
   if (scan === undefined) return undefined;
@@ -72,7 +73,7 @@ export function editTopLevelProperty(
   if (value === undefined) {
     return property === undefined ? text : removeJsonProperty(text, scan, property);
   }
-  const rendered = renderJsonValue(value, style.indent, style.newline);
+  const rendered = renderJsonValue(value, valueIndent, style.indent, style.newline);
   return property !== undefined
     ? `${text.slice(0, property.valueStart)}${rendered}${text.slice(property.valueEnd)}`
     : insertJsonProperty(text, scan, key, rendered, style.indent, style.newline);
@@ -177,9 +178,21 @@ function skipJsonValue(text: string, from: number): number | undefined {
   return i > from ? i : undefined;
 }
 
-/** A JSON value indented for embedding at a top-level property position. */
-function renderJsonValue(value: unknown, indent: string, newline: string): string {
-  return JSON.stringify(value, null, indent).split('\n').join(`${newline}${indent}`);
+/**
+ * A JSON value rendered for embedding at a property position. `stringifyIndent` is
+ * the unit its own members nest by; `joinIndent` is where the value sits — for a
+ * top-level property they are the same, and for a member of a nested container the
+ * value sits at the member's indent while its members keep nesting by the file's
+ * unit, which is the difference between `command` landing one level under `smelt`
+ * or two under it.
+ */
+function renderJsonValue(
+  value: unknown,
+  stringifyIndent: string,
+  joinIndent: string,
+  newline: string,
+): string {
+  return JSON.stringify(value, null, stringifyIndent).split('\n').join(`${newline}${joinIndent}`);
 }
 
 function removeJsonProperty(
@@ -213,6 +226,85 @@ function insertJsonProperty(
   }
   const last = scan.properties[scan.properties.length - 1]!;
   return `${text.slice(0, last.valueEnd)},${newline}${indent}${entry}${text.slice(last.valueEnd)}`;
+}
+
+/**
+ * `editJsonProperty`: the same contract, one level deeper. Replace, insert or remove
+ * the property at `path` — e.g. `['mcpServers', 'smelt']` — where the *container* is a
+ * top-level property whose value is itself a JSON object. Everything outside the
+ * edited bytes rides through verbatim, including sibling entries inside the container.
+ *
+ * When the container key is absent and a value is given, the container is created
+ * fresh around the entry. When a removal empties the container, the container is
+ * lifted out too — a file that never carried the key comes back byte-identical after
+ * an apply → remove round trip, and one that carried other entries keeps them
+ * untouched. Returns `undefined` when the container's value is not a JSON object the
+ * scanner can walk (the caller refuses or skips, as with {@link editTopLevelProperty}).
+ */
+export function editJsonProperty(
+  text: string,
+  path: readonly [string, ...(readonly string[])],
+  value: unknown,
+  style: JsonStyle = jsonStyle(text),
+): string | undefined {
+  return editJsonPropertyAt(text, path, value, style, style.indent);
+}
+
+/** The walker: same body, `path` as a plain (runtime-checked) array. */
+function editJsonPropertyAt(
+  text: string,
+  path: readonly string[],
+  value: unknown,
+  style: JsonStyle,
+  baseIndent: string,
+): string | undefined {
+  const head = path[0]!;
+  const rest = path.slice(1);
+  if (rest.length === 0) return editTopLevelProperty(text, head, value, style, baseIndent);
+  const scan = scanJsonTopLevel(text);
+  if (scan === undefined) return undefined;
+  const property = scan.properties.find((candidate) => candidate.key === head);
+  if (property === undefined) {
+    if (value === undefined) return text; // nothing to remove under an absent container
+    // Build the fresh container from the tail of the path, then hand it to the
+    // top-level editor as a plain value — one renderer, one indent story.
+    const container: Record<string, unknown> = {};
+    let cursor = container;
+    for (const key of rest.slice(0, -1)) {
+      const next: Record<string, unknown> = {};
+      cursor[key] = next;
+      cursor = next;
+    }
+    cursor[rest[rest.length - 1]!] = value;
+    return editTopLevelProperty(text, head, container, style);
+  }
+  const inner = text.slice(property.valueStart, property.valueEnd);
+  // The container's members sit one unit deeper than the file's top level — read
+  // that unit off the container's own first key, so a fresh member lands beside its
+  // siblings and the member's *value* keeps nesting by the file's unit (passed as
+  // valueIndent), which is what one level deeper actually means.
+  const memberIndent = /\n([ \t]+)"/.exec(inner)?.[1] ?? style.indent + style.indent;
+  const edited = editJsonPropertyAt(
+    inner,
+    rest,
+    value,
+    { ...style, indent: memberIndent },
+    baseIndent,
+  );
+  if (edited === undefined) return undefined; // the container's value is not an object
+  if (edited === inner) return text;
+  if (value === undefined && removesToEmptyObject(edited)) {
+    // The container is now `{}` and it only got that way because of this removal —
+    // lift it out, so a file that never carried the key round-trips byte-identical.
+    return editTopLevelProperty(text, head, undefined, style) ?? text;
+  }
+  return `${text.slice(0, property.valueStart)}${edited}${text.slice(property.valueEnd)}`;
+}
+
+/** True when `text` is exactly a JSON object with no properties. */
+function removesToEmptyObject(text: string): boolean {
+  const scan = scanJsonTopLevel(text);
+  return scan !== undefined && scan.properties.length === 0;
 }
 
 /* ------------------------------------------------------------------------------------

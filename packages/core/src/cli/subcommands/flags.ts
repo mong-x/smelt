@@ -36,7 +36,15 @@ export const CLI_FLAGS = {
   strategy: { type: 'string' },
   ignore: { type: 'string', multiple: true },
   cache: { type: 'string' },
-  harness: { type: 'string' },
+  /**
+   * Repeatable because `setup` wires several harnesses in one run. `hooks` takes one
+   * per run and refuses a second id in its own parse — arity is a per-verb fact,
+   * expressed where the verb validates, with the one generated refusal; the table
+   * records how argv is read, not how many a verb accepts.
+   */
+  harness: { type: 'string', multiple: true },
+  yes: { type: 'boolean' },
+  'no-mcp': { type: 'boolean' },
   strict: { type: 'boolean' },
   json: { type: 'boolean' },
   reconstruct: { type: 'boolean' },
@@ -192,6 +200,24 @@ export const FLAG_HELP: Readonly<Record<FlagName, FlagHelp>> = {
     body: () => [
       'Skip harness detection and target one id:',
       ...optionList(HARNESS_IDS, OPTION_BODY_WIDTH),
+      'Repeatable for setup; hooks takes one per run.',
+    ],
+  },
+  yes: {
+    label: '--yes',
+    body: () => [
+      "Non-interactive setup: the recipe's defaults, printed",
+      'loudly as they are applied. Existing files are never',
+      'overwritten — skipped with a note; hooks install edits',
+      'them, and it asks per file.',
+    ],
+  },
+  'no-mcp': {
+    label: '--no-mcp',
+    body: () => [
+      'Setup only: skip the MCP registration step — the',
+      'printed command and its note — for a hooks-only',
+      'setup.',
     ],
   },
   strict: {

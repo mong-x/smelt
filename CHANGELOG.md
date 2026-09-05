@@ -11,6 +11,51 @@ tier-1 rows in `packages/core/bench/RESULTS.md`, each carrying its date and corp
 commit; the mutation tally is whatever `guards.json` says, and that file is written by
 the runner rather than by hand.
 
+## 0.5.0 — 2026-09-05
+
+`@smeltjs/core@0.5.0` · `@smeltjs/mcp@0.4.0` (lockstep — the mcp package itself is
+unchanged; the pair releases together because the publish pipeline's one tag carries
+both)
+
+The wire surface a model sees — the `<<smelt/v1: …>>` marker and the `smelt_retrieve`
+contract — is unchanged.
+
+### Added
+
+- **`smelt setup`** — the whole recipe in one command: config, the hooks preset, the
+  MCP registration, and a real smelt → retrieve round trip as the check that makes
+  "set up" a claim with evidence. Interactive from a terminal (Enter accepts every
+  default); for an agent, everything is a flag — `setup --yes --harness <id>... [--no-mcp]
+[--json]` — and the refusal names the flags. Idempotent; repairs only smelt's own
+  entries in files it finds, never a foreign byte.
+- **`smelt doctor`** — the read-only half of the install seam: which release wrote the
+  instruction blocks (a version stamp inside each block), whether the config parses and
+  its store directory exists, whether the MCP registration is intact, and which pieces
+  are orphans. Exit 0 when current; the report ends with the exact repair command.
+  Doctor never writes.
+- **The SetupRecipe** — the setup facts (install commands, the 4000-byte recommended
+  budget, the store default, the MCP commands, the brew tap, the skill install) owned
+  as data in one module; the site's facts and the README are derived or guard-pinned,
+  never retyped.
+- **MCP registration as an install-step kind** — `smelt setup` writes the registration
+  byte-faithfully (claude-code's `.mcp.json`, opencode's `opencode.json`), beside any
+  servers you already registered; `smelt hooks remove` lifts it back out.
+- **The SkillPack** — `skills/smelt/SKILL.md`, generated from the recipe, installable
+  with `npx skills add smeltjs/smelt`; the marker-block channel is unchanged.
+- **The lava renderer** — the wizards' presentation as a zero-dependency ANSI adapter
+  behind the output seam (ADR-0001: Node-native); `--yes`, `--json`, pipes and
+  `NO_COLOR` emit exactly the bytes they always have.
+- **Tag-and-watch publishing** — a tag verifies, packs, publishes the exact bytes it
+  hashed, and renders the Homebrew formula from them (`brew install smeltjs/tap/smelt`).
+
+### Changed
+
+- `--harness` is repeatable for `setup`; `hooks` still takes one per run.
+- `smelt hooks install` stamps the release into the instruction block, so doctor can
+  read it back.
+- The README quickstart is two commands (install + `smelt setup`); recovery after any
+  upgrade is two (`smelt doctor`, then `smelt setup` only if it names something).
+
 ## 0.4.0 — 2026-09-03
 
 `@smeltjs/core@0.4.0` · `@smeltjs/mcp@0.3.0`

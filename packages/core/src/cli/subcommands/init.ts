@@ -2,6 +2,7 @@ import process from 'node:process';
 
 import { CliUsageError } from '../../errors.ts';
 import { runInit } from '../init.ts';
+import { colorize } from '../lava.ts';
 import { CLI_NAME } from '../shell.ts';
 import type { CliIo } from '../shell.ts';
 
@@ -66,7 +67,7 @@ export const initCommand: Subcommand<InitInvocation, InitInvocation> = {
     }
     return await runInit({
       input: io.initInput,
-      output: io.stdout,
+      output: (text) => io.stdout(colorize(text, io.color === true)),
       cwd: io.cwd ?? process.cwd(),
     });
   },

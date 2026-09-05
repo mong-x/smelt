@@ -147,7 +147,7 @@ export const MUTATIONS: GuardMutation[] = [
   {
     id: 'json-edit-render-ignores-file-indent',
     file: 'text/json-edit.ts',
-    find: 'return JSON.stringify(value, null, indent).split',
+    find: 'return JSON.stringify(value, null, stringifyIndent).split',
     replace: 'return JSON.stringify(value, null, 2).split',
     why: 'the inserted value rendered in two-space style regardless of what the file uses — a 4-space or tab-indented settings.json would still parse and still round-trip, but every install would leave a mis-indented block the user has to hand-fix',
   },

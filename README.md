@@ -136,7 +136,7 @@ import { DirectoryElisionStore } from '@smeltjs/core';
 
 const smelter = createSmelter({
   defaultBudgetBytes: 8_000,
-  store: new DirectoryElisionStore('.smelt-store'), // content-addressed, crash-safe, no eviction
+  store: new DirectoryElisionStore('.smelt/store'), // content-addressed, crash-safe, no eviction
 });
 // A smelt_retrieve in a later turn — or a later process — still gets its bytes back.
 // Retrieval counters survive restarts, so expansionRate stays meaningful across a session.
@@ -187,15 +187,59 @@ Prefer your own planner or a hosted reranker? `createSmelter({ planner })` accep
 `Planner` implementation, and `RerankStage` is the seam for relevance — both are yours
 to wire, in your source, with your key.
 
-### From a shell (any agent CLI)
+### One command: `smelt setup`
 
-No harness code required: the whole loop is four commands. Install the CLI globally and
-give it somewhere for elisions to outlive a single command:
+Install the CLI, then run one command:
 
 ```sh
 npm install -g @smeltjs/core
-smelt init        # choose a directory store — cross-run retrieval needs one
+smelt setup
 ```
+
+`smelt setup` applies the whole recipe: `smelt.config.json`, the hooks preset for the
+harnesses it detects, the MCP registration for Claude Code and opencode, and a real
+smelt → retrieve round trip to prove the loop. Interactive from a terminal — Enter
+accepts every default. Existing files are never overwritten: they are skipped with a
+note, and `smelt hooks install` (below) edits them, asking per file.
+
+For an agent, the whole interface is flags, and the receipt is the output:
+
+```sh
+npx @smeltjs/core setup --yes --harness claude-code --json
+```
+
+Or hand the agent the skill, which teaches all of it in the agent's own vocabulary:
+
+```sh
+npx skills add smeltjs/smelt
+```
+
+Homebrew, from smelt's own tap:
+
+```sh
+brew install smeltjs/tap/smelt
+```
+
+### Updating — and the other machine
+
+An update is the same loop on every machine, forever:
+
+```sh
+smelt doctor
+```
+
+Doctor reads installed state and **never writes**: which release wrote the instruction
+blocks, whether the config parses and its store directory exists, whether the MCP
+registration is intact, and which pieces are orphans. Exit 0 means current. When
+anything is behind, the report ends with the exact repair command, which is always:
+
+```sh
+smelt setup
+```
+
+Setup is idempotent — a re-run on a current machine writes nothing and exits 0 — so
+_upgrade, doctor, setup_ is the whole recovery story, whether "the other machine" is a
+laptop or a teammate's.
 
 Then tell your agent about it, in whatever standing-instructions file it reads
 (`CLAUDE.md`, `AGENTS.md`, a system prompt):

@@ -1,6 +1,6 @@
 {
-  "guards": 27,
-  "mutations": 131,
+  "guards": 33,
+  "mutations": 150,
   "byGuard": [
     {
       "guard": "packages/core/test/guards/agents-lint.test.ts",
@@ -21,6 +21,10 @@
     {
       "guard": "packages/core/test/guards/config-writer.test.ts",
       "count": 2
+    },
+    {
+      "guard": "packages/core/test/guards/doctor.test.ts",
+      "count": 3
     },
     {
       "guard": "packages/core/test/guards/expansion-counter.test.ts",
@@ -47,8 +51,16 @@
       "count": 2
     },
     {
+      "guard": "packages/core/test/guards/lava.test.ts",
+      "count": 2
+    },
+    {
       "guard": "packages/core/test/guards/marker-format.test.ts",
       "count": 2
+    },
+    {
+      "guard": "packages/core/test/guards/mcp-registration.test.ts",
+      "count": 3
     },
     {
       "guard": "packages/core/test/guards/no-network.test.ts",
@@ -79,7 +91,19 @@
       "count": 2
     },
     {
+      "guard": "packages/core/test/guards/setup-recipe.test.ts",
+      "count": 3
+    },
+    {
+      "guard": "packages/core/test/guards/setup-verb.test.ts",
+      "count": 6
+    },
+    {
       "guard": "packages/core/test/guards/site-facts.test.ts",
+      "count": 2
+    },
+    {
+      "guard": "packages/core/test/guards/skill-pack.test.ts",
       "count": 2
     },
     {

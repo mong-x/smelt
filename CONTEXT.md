@@ -264,3 +264,25 @@ registry, idField)`: the key **is** the id, and the entry's id field agrees, so 
   model, which Law 1 forbids; so smelt does the first and prints the guide's own
   refactor prompt, filled in with the file's real headings, for the user's own agent.
   The unconfigured rerank stage, applied to prose.
+
+## Setup and distribution
+
+Decided in the Sep 2026 architecture review; ADRs 0001–0003 carry the reasoning.
+
+- **SetupRecipe**: the one true way to put smelt on a machine — install, init choices,
+  hooks, MCP registration, verification — held as data, from which every rendering
+  (README fragments, site prompts, the `setup` verb) derives, or is guard-pinned against
+  it. Prose is never the source.
+- **Setup** (`smelt setup`): the one-command, idempotent application of the recipe for
+  chosen harnesses — interactive when a TTY is present, flag-driven when an agent runs
+  it, and the only repair path for installed state. The `init` wizard remains the
+  deliberate sibling, not the repair path. _Avoid_: installer, `smelt init` (that is the
+  careful wizard).
+- **InstalledState**: what smelt has written on this machine — hook entries (found by
+  their ownership marker), the config, the MCP registration, the binary version. `smelt
+doctor` reads it and never writes it; orphaned pieces are reported facts, never
+  silently cleaned.
+- **SkillPack**: the opt-in, published teaching artifact an agent's owner installs by
+  consent (`npx skills add smeltjs/smelt`) — the second adapter over the instruction
+  content, beside the marker block. Distinct from R1's refused act (ADR-0002): smelt
+  still never writes an agent's files uninvited.

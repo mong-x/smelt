@@ -1,18 +1,26 @@
+import facts from '@/generated/facts.json';
 import { Tabs } from '@/components/ui/Tabs';
 import { CopyButton } from '@/components/ui/CopyButton';
 import { Frame, FrameBar } from '@/components/ui/Frame';
 import { GITHUB } from '@/components/Nav';
 
+/**
+ * The install lines — every one a recipe fact read off facts.json, including the
+ * manager spellings (npm, pnpm, bun, the one-shot, brew). A spelling typed here was
+ * the `.smelt-store` drift shape reborn: invisible to the exact-match scan, wrong
+ * the day the package name moved.
+ */
 const INSTALLS = [
-  { id: 'npm', label: 'npm', cmd: 'npm install @smeltjs/core' },
-  { id: 'pnpm', label: 'pnpm', cmd: 'pnpm add @smeltjs/core' },
-  { id: 'bun', label: 'bun', cmd: 'bun add @smeltjs/core' },
+  { id: 'npm', label: 'npm', cmd: facts.recipe.installLibrary },
+  { id: 'pnpm', label: 'pnpm', cmd: facts.recipe.installPnpm },
+  { id: 'bun', label: 'bun', cmd: facts.recipe.installBun },
   {
     id: 'npx',
     label: 'npx',
-    cmd: 'npx @smeltjs/core src/server.ts --budget 4000 --focus handleRequest',
+    cmd: `${facts.recipe.oneShot} src/server.ts --budget ${facts.recipe.recommendedBudgetBytes} --focus handleRequest`,
   },
-] as const;
+  { id: 'brew', label: 'brew', cmd: facts.recipe.brewInstall },
+];
 
 function InstallLine({ cmd }: { cmd: string }) {
   return (

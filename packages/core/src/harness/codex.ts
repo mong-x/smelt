@@ -71,6 +71,7 @@ export const codex: ShimmedHarnessProfile = {
   instructions: 'snippet',
   caveats: [
     'project-level Codex hooks run only once the project is trusted (features.hooks; see docs/research/2026-09-02-agent-enforcement.md § 3)',
+    'MCP registration is manual for Codex (TOML) — packages/mcp/README.md has the snippet; setup does not edit TOML',
   ],
   hooks: HOOKS,
   install: [

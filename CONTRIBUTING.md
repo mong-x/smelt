@@ -246,29 +246,55 @@ is your format in your process, and nothing here is in your way.
 
 ## Publishing (a maintainer action)
 
-**Do not publish. Do not run `npm login`.** Publishing `@smeltjs/core` is a maintainer
-action, not a contributor's and not an agent's. This checklist exists so the ordering is
-decided before anyone is standing at the keyboard.
+**Do not publish by hand. Do not run `npm login`.** Publishing is a maintainer action,
+not a contributor's and not an agent's — and since the publish workflow exists, it is
+also not something a maintainer does at a keyboard: **a maintainer tags, and watches**.
 
 **The ordering rule, and why it is a rule:** npm restricts unpublishing after **72
-hours** — after that only `npm deprecate` remains. A publish is therefore
-effectively permanent. So publish **after** the CLI actually runs on a real file, never
+hours** — after that only `npm deprecate` remains. A publish is therefore effectively
+permanent. So tag **after** the CLI actually runs on a real file on your machine, never
 to "reserve the name".
 
-Before a publish:
+Before pushing the tag:
 
-- [ ] `pnpm verify` green, and `bash scripts/check-fresh-clone.sh` green — the second one
-      is what catches a file that works only because it was never committed.
-- [ ] `pnpm build` has run, so `packages/core/grammars/` is populated, and
-      `pnpm generate:third-party` leaves `THIRD-PARTY.md` unchanged.
-- [ ] `npm pack --dry-run` in `packages/core`, and **read the file list**. It must contain
-      `dist/`, all fifteen `grammars/*.wasm`, `README.md` and `THIRD-PARTY.md`. A tarball
-      without the grammars still installs and still fails later, on someone else's
-      machine, which is the failure shape this project is arranged against.
-- [ ] `node dist/cli/bin.js --version` prints the version in the manifest, and
-      `node dist/cli/bin.js <a real file> --budget 4000` prints text and a report.
-- [ ] The version is deliberate. `0.0.0` is the placeholder; the first real publish picks
-      a number and lives with it.
+- [ ] `pnpm verify` green on the commit you are about to tag — the workflow runs it
+      again on that exact commit, and npm gets nothing from a red tick.
+- [ ] `node packages/core/dist/cli/bin.js --version` prints the version in the
+      manifest, and that binary smelts a real file. The workflow cannot judge "runs
+      well"; you can.
+- [ ] The version in both manifests is deliberate. `0.0.0` is the placeholder; the
+      first real publish picks a number and lives with it.
+
+Then: **push the tag.** `git tag vX.Y.Z && git push origin vX.Y.Z`. The workflow
+(`.github/workflows/publish.yml`) verifies, builds, packs, publishes core then mcp from
+the packed tarballs, computes the tarball sha256 it just served, and renders
+`packaging/homebrew/smelt.rb` from those two facts. The MCP `workspace:^` publish guard
+runs inside the pipeline — explicit, because publishing a packed tarball skips
+lifecycle scripts, and 0.1.0 is the reason the guard exists.
+
+One-time owner setup, and the tap:
+
+1. Put an npm **automation token** in the repository secret `NPM_TOKEN`.
+2. Create the tap repository `smeltjs/tap`, and seed it from the workflow's
+   `homebrew-formula` artifact (or render locally:
+   `node scripts/render-formula.mjs <version> <sha256>` — the same pair the workflow
+   computed):
+
+   ```sh
+   brew tap-new smeltjs/tap
+   cp packaging/homebrew/smelt.rb "$(brew --repository)/Library/Taps/smeltjs/homebrew-tap/Formula/smelt.rb"
+   cd "$(brew --repository)/Library/Taps/smeltjs/homebrew-tap" && git add . && git commit -m "smelt 0.4.0" && git push
+   ```
+
+3. From then on: `brew install smeltjs/tap/smelt`, and a release is
+   `brew upgrade smelt` on every machine — followed by `smelt doctor`, and `smelt
+setup` if doctor names anything behind.
+
+The workflow's formula artifact is deliberately not auto-committed: one token that can
+push to two repositories is more write access than a formula is worth. The version
+window the site advertises (site versions are read from the manifests, before npm is
+checked) still applies — publish, then merge the bump; the gap is the length of that
+window.
 
 Files that carry the package name, should it ever need to change: `packages/core/package.json`,
 `packages/core/README.md`, the root `README.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`. The

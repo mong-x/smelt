@@ -36,7 +36,10 @@ export const grok: ShimmedHarnessProfile = {
   detectHome: ['.grok'],
   instructionFile: 'AGENTS.md',
   instructions: 'snippet',
-  caveats: ['deny-only hooks: input rewrite is not supported, so rewrite mode falls back to deny'],
+  caveats: [
+    'deny-only hooks: input rewrite is not supported, so rewrite mode falls back to deny',
+    'MCP registration is manual for Grok (TOML) — packages/mcp/README.md has the snippet; setup does not edit TOML',
+  ],
   hooks: HOOKS,
   install: [
     {

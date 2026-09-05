@@ -1,6 +1,6 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
 import { CliUsageError } from '../errors.ts';
 import { nodeCommand, portablePath, shimScriptPath, smeltBinPath } from '../harness/paths.ts';
@@ -30,13 +30,24 @@ import {
 import { DEFAULT_SUGGESTION_BUDGET_BYTES, DEFAULT_THRESHOLD_BYTES } from '../hooks/guard-core.ts';
 import type { EnforcementMode } from '../hooks/guard-core.ts';
 import {
+  editJsonProperty,
   editTopLevelProperty,
   jsonStyle,
   stripMarkerBlock,
   upsertMarkerBlock,
 } from '../text/json-edit.ts';
 
-import { answerReader, CLI_NAME } from './shell.ts';
+import { SETUP_RECIPE } from '../setup/recipe.ts';
+import {
+  confirmLoop,
+  confirmYesNo,
+  listPlannedFiles,
+  walkSteps,
+  wizardAsk,
+  writePlannedFile,
+} from './wizard.ts';
+import type { Ask } from './wizard.ts';
+import { CLI_NAME } from './shell.ts';
 import type { AnswerStream } from './shell.ts';
 import {
   CONFIG_FILE_NAME,
@@ -96,6 +107,11 @@ export interface HooksIo {
   readonly cwd: string;
   /** Home directory for detection only. Tests point it at a temp dir; nothing writes here. */
   readonly home?: string;
+  /**
+   * The release running the install — stamped into the instruction block so
+   * `smelt doctor` can tell what wrote it. Absent (legacy callers) writes no stamp.
+   */
+  readonly version?: string;
 }
 
 export { instructionSnippet, SNIPPET_END_MD, SNIPPET_START_MD };
@@ -318,6 +334,8 @@ interface PlannedRemoval {
 
 export interface HooksChoices {
   harnesses: HarnessProfile[];
+  /** The release writing these bytes — stamped into the snippet for `smelt doctor`. */
+  writtenBy?: string;
   guard: boolean;
   statsOnStop: boolean;
   mapOnStart: boolean;
@@ -380,6 +398,7 @@ export function planInstall(cwd: string, choices: HooksChoices): InstallPlan {
 
   const ctx: HarnessInstallContext = {
     cwd,
+    ...(choices.writtenBy === undefined ? {} : { writtenBy: choices.writtenBy }),
     guard: choices.guard,
     statsOnStop: choices.statsOnStop,
     mapOnStart: choices.mapOnStart,
@@ -387,7 +406,7 @@ export function planInstall(cwd: string, choices: HooksChoices): InstallPlan {
     thresholdBytes: choices.thresholdBytes,
     budgetBytes,
   };
-  const snippet = instructionSnippet(choices.thresholdBytes, budgetBytes);
+  const snippet = instructionSnippet(choices.thresholdBytes, budgetBytes, choices.writtenBy);
 
   const planJsonHooks = (
     name: string,
@@ -449,6 +468,26 @@ export function planInstall(cwd: string, choices: HooksChoices): InstallPlan {
           if (step.guardOnly && !ctx.guard) break;
           files.set(join(cwd, step.file), planFile(cwd, step.file, step.content(ctx), step.mode));
           break;
+        case 'mcp-registration': {
+          // Byte-faithful beside whatever servers the user already registered —
+          // sibling entries, key order and indentation all ride through.
+          const existing = readIfExists(join(cwd, step.file));
+          const merged = editJsonProperty(
+            existing ?? '{}',
+            step.path,
+            step.entry(ctx),
+            existing === undefined ? undefined : jsonStyle(existing),
+          );
+          if (merged === undefined) {
+            skipped.push({
+              name: step.file,
+              why: 'exists but is not a JSON object — fix or remove it, then re-run',
+            });
+            break;
+          }
+          files.set(join(cwd, step.file), planFile(cwd, step.file, merged));
+          break;
+        }
       }
     }
 
@@ -468,7 +507,7 @@ export function planInstall(cwd: string, choices: HooksChoices): InstallPlan {
 }
 
 /** Where the installed config points the persistent store, relative to the config file. */
-export const DEFAULT_STORE_DIR = '.smelt/store';
+export const DEFAULT_STORE_DIR = SETUP_RECIPE.store.defaultDir;
 
 /**
  * Existing config re-rendered with the hooks block, other fields carried verbatim —
@@ -555,6 +594,32 @@ export function planRemove(
     removals.set(path, { name, path, action: 'delete' });
   };
 
+  /**
+   * The registration comes back out the way it went in: the server entry lifted,
+   * byte-faithfully, from its container. A container this install created — empty
+   * once the entry is gone — is removed with it, so a file that never carried the
+   * key round-trips to byte-identical; one that carries other servers keeps them.
+   */
+  const planMcpStrip = (name: string, keys: readonly [string, string]): void => {
+    const path = join(cwd, name);
+    const existing = readIfExists(path);
+    if (existing === undefined) return;
+    const removed = editJsonProperty(existing, keys, undefined);
+    if (removed === undefined || removed === existing) return;
+    let remains: unknown;
+    try {
+      remains = JSON.parse(removed);
+    } catch {
+      return; // unreachable — the editor only returns parseable text; refuse to guess
+    }
+    const empty =
+      typeof remains === 'object' && remains !== null && Object.keys(remains).length === 0;
+    removals.set(
+      path,
+      empty ? { name, path, action: 'delete' } : { name, path, action: 'modify', content: removed },
+    );
+  };
+
   for (const profile of harnesses) {
     for (const step of profile.install) {
       switch (step.kind) {
@@ -566,6 +631,9 @@ export function planRemove(
           break;
         case 'own-file':
           planWholeFileDelete(step.file);
+          break;
+        case 'mcp-registration':
+          planMcpStrip(step.file, step.path);
           break;
       }
     }
@@ -583,37 +651,31 @@ export function planRemove(
  * The wizard
  * ---------------------------------------------------------------------------------- */
 
-type Asker = (prompt: string) => Promise<string>;
+type Asker = Ask;
 
 /**
  * `smelt hooks <install|remove>`, start to finish. The same testability pattern as
- * `runInit`: a pure function over an input/output pair, exit code returned.
+ * `runInit`: a pure function over an input/output pair, exit code returned. The ask
+ * adapter, the step machine and the confirms are the wizard kit's (`cli/wizard.ts`) —
+ * this file holds what is hooks' own: the steps, the plan, the per-file consent.
  */
 export async function runHooks(
   action: 'install' | 'remove',
   harnessFlag: string | undefined,
   io: HooksIo,
 ): Promise<number> {
-  // Same adapter, same reason, as `runInit` — see the note on `answerReader`.
-  const lines = answerReader(io.input);
-  const ask = async (prompt: string): Promise<string> => {
-    io.output(prompt);
-    const next = await lines.next();
-    if (next === undefined) {
-      throw new CliUsageError(
-        `${CLI_NAME} hooks: input ended before the wizard finished. ` +
-          `Files already confirmed and written stay; nothing further was written.`,
-      );
-    }
-    return next.trim();
-  };
-
+  const wizard = wizardAsk(
+    io.input,
+    io.output,
+    `${CLI_NAME} hooks: input ended before the wizard finished. ` +
+      `Files already confirmed and written stay; nothing further was written.`,
+  );
   try {
     return action === 'install'
-      ? await installFlow(io, ask, harnessFlag)
-      : await removeFlow(io, ask, harnessFlag);
+      ? await installFlow(io, wizard.ask, harnessFlag)
+      : await removeFlow(io, wizard.ask, harnessFlag);
   } finally {
-    await lines.release();
+    await wizard.release();
   }
 }
 
@@ -648,6 +710,7 @@ async function installFlow(
 
   const choices: HooksChoices = {
     harnesses: harnessFlag !== undefined ? [resolveHarnessFlag(harnessFlag)] : [...detected],
+    ...(io.version === undefined ? {} : { writtenBy: io.version }),
     ...presetToggles(io.cwd),
     enforcement: 'deny',
     thresholdBytes: DEFAULT_THRESHOLD_BYTES,
@@ -713,24 +776,16 @@ async function installFlow(
     async (io_, ask_) => stepThreshold(io_, ask_, choices),
   ];
 
-  let index = 0;
+  const machine = steps.map((step) => (a: Ask) => step(io, a));
   for (;;) {
-    while (index < steps.length) {
-      const outcome = await steps[index]!(io, ask);
-      if (outcome === 'back') {
-        if (index === 0) io.output(`This is the first step — there is nothing before it.\n`);
-        else index -= 1;
-      } else {
-        index += 1;
-      }
-    }
+    await walkSteps(machine, ask, io.output);
     if (choices.harnesses.length === 0) {
       io.output(`No harness selected. Nothing to do; nothing was written.\n`);
       return 0;
     }
     const verdict = await confirmAndInstall(io, ask, choices);
     if (verdict !== 'back') return 0;
-    index = steps.length - 1;
+    await walkSteps(machine, ask, io.output, machine.length - 1);
   }
 }
 
@@ -866,8 +921,41 @@ async function stepThreshold(
  * command each entry runs**, not by the key it sits under. Reading `SessionStart` as
  * one boolean would make a re-run with the map on and the lint off write both back —
  * or neither — which is a toggle the user believed they had set.
+ *
+ * Exported for `smelt setup`, which applies the preset's *current* state the same way
+ * — read off what is installed — rather than keeping a second copy of the defaults.
  */
-function presetToggles(
+/**
+ * Whether a JSON hook file's text carries entries of ours — the **one** predicate for
+ * this fact, shared by the readers (`smelt doctor`, `smelt setup`'s repair policy) and
+ * backed by the same `isOursEntry` the writer's strip-merge uses. The guard command
+ * itself carries only the shim path (no token), so a text-level `OURS_TOKEN` search
+ * would miss a guard-only install — the exact drift this exists to prevent.
+ */
+export function jsonHooksContainOurs(text: string): boolean {
+  let hooks: Record<string, unknown> | undefined;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    const hooksValue =
+      typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)['hooks']
+        : undefined;
+    hooks =
+      typeof hooksValue === 'object' && hooksValue !== null && !Array.isArray(hooksValue)
+        ? (hooksValue as Record<string, unknown>)
+        : undefined;
+  } catch {
+    hooks = undefined;
+  }
+  if (hooks === undefined) return false;
+  return MANAGED_EVENTS.some((event) =>
+    Array.isArray(hooks[event])
+      ? (hooks[event] as unknown[]).some((entry) => isOursEntry(entry))
+      : false,
+  );
+}
+
+export function presetToggles(
   cwd: string,
 ): Pick<HooksChoices, 'guard' | 'statsOnStop' | 'mapOnStart' | 'lintOnStart'> {
   const defaults = { guard: true, statsOnStop: true, mapOnStart: false, lintOnStart: false };
@@ -935,22 +1023,18 @@ async function confirmAndInstall(
 ): Promise<'done' | 'back'> {
   const plan = planInstall(io.cwd, choices);
 
-  io.output(
-    `\nAbout to write, into ${io.cwd}:\n` +
-      plan.files.map((file) => `  ${file.name.padEnd(32)} (${fileLabel(file)})\n`).join('') +
-      plan.skipped.map((skip) => `  ${skip.name.padEnd(32)} (SKIPPED: ${skip.why})\n`).join('') +
-      `Nothing has been written yet.\n`,
-  );
+  io.output(`\nAbout to write, into ${io.cwd}:\n`);
+  listPlannedFiles(io.output, plan.files, plan.skipped, fileLabel);
+  io.output(`Nothing has been written yet.\n`);
 
-  for (;;) {
-    const answer = await ask(`confirm (yes / no / back)> `);
-    if (answer === 'back') return 'back';
-    if (answer === 'no') {
-      io.output(`Nothing was written.\n`);
-      return 'done';
-    }
-    if (answer === 'yes') break;
-    io.output(`yes to write, no to leave everything untouched, back to change a setting.\n`);
+  const confirmed = await confirmLoop(
+    ask,
+    'yes to write, no to leave everything untouched, back to change a setting.',
+  );
+  if (confirmed === 'back') return 'back';
+  if (confirmed === 'no') {
+    io.output(`Nothing was written.\n`);
+    return 'done';
   }
 
   for (const file of plan.files) {
@@ -967,9 +1051,7 @@ async function confirmAndInstall(
         continue;
       }
     }
-    mkdirSync(dirname(file.path), { recursive: true });
-    writeFileSync(file.path, file.content);
-    if (file.mode !== undefined) chmodSync(file.path, file.mode);
+    writePlannedFile(file);
     io.output(`  wrote ${file.name}\n`);
   }
 
@@ -1008,14 +1090,9 @@ async function removeFlow(
       `edit or remove it there.\nNothing has been changed yet.\n`,
   );
 
-  for (;;) {
-    const answer = await ask(`confirm (yes / no)> `);
-    if (answer === 'no') {
-      io.output(`Nothing was changed.\n`);
-      return 0;
-    }
-    if (answer === 'yes') break;
-    io.output(`yes to proceed, no to leave everything untouched.\n`);
+  if ((await confirmYesNo(ask, 'yes to proceed, no to leave everything untouched.')) === 'no') {
+    io.output(`Nothing was changed.\n`);
+    return 0;
   }
 
   for (const removal of removals) {

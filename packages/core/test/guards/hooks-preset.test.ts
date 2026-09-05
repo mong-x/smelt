@@ -84,9 +84,11 @@ describe('the installer never touches an existing file without a per-file yes', 
       const output = await install(['', '', '', '', '', '', 'yes', refusal]);
       expect(output, refusal).toContain('CLAUDE.md exists');
       expect(readFileSync(join(dir, 'CLAUDE.md'), 'utf8'), refusal).toBe(sentinel);
-      // The files that were new (config, settings) may write; clear them per round.
+      // The files that were new (config, settings, the MCP registration) may write;
+      // clear them per round.
       rmSync(join(dir, 'smelt.config.json'), { force: true });
       rmSync(join(dir, '.claude'), { recursive: true, force: true });
+      rmSync(join(dir, '.mcp.json'), { force: true });
     }
   });
 

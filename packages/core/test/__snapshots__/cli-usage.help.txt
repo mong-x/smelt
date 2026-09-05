@@ -9,10 +9,12 @@ USAGE
   smelt hooks install [--harness <id>]
   smelt hooks remove [--harness <id>]
   smelt agents lint [dir] [--strict] [--json]
+  smelt doctor [--json]
   smelt --reconstruct <result.json>
   smelt --reconstruct < result.json
   smelt init
   smelt agents split [dir]
+  smelt setup [--harness <id>]... [--yes] [--no-mcp] [--json]
 
 Smelted text goes to stdout and the report goes to stderr, so the two can be piped
 apart:  smelt big.log --budget 4000 > small.log
@@ -103,6 +105,33 @@ AGENTS
   omission. There is no `smelt agents init`: the guide says never to
   auto-generate an AGENTS.md.
 
+SETUP
+  smelt setup applies the whole recipe in one command: smelt.config.json, the
+  hooks preset for the harnesses you name, the MCP registration step, and a real
+  smelt → retrieve round trip to prove the loop. Interactive from a terminal; for
+  an agent, answer everything up front:
+
+    smelt setup --yes [--harness <id>]... [--no-mcp] [--json]
+
+  The defaults are the recipe's: budget 4000 bytes
+  (written only when the config carries none), a directory store at
+  .smelt/store (only when the config carries none). Existing
+  files are never overwritten — they are skipped with a note; hooks install edits
+  them, and it asks per file. Re-running on a current machine writes nothing and
+  exits 0. --json prints a receipt: every file, every check, the exit's meaning.
+
+DOCTOR
+  smelt doctor reads installed state and compares it with the binary running:
+  which release wrote the instruction blocks, whether the config parses and its
+  store directory exists, whether the MCP registration is intact, and which pieces
+  are orphans. Exit 0 when current (or nothing installed), the refused exit when
+  something is behind — and the report names the exact repair command:
+  smelt setup, per harness where a block is behind. Doctor never writes.
+  The update loop is:
+
+    upgrade → smelt doctor → smelt setup
+
+
 OPTIONS
   --budget <bytes>     Required, unless smelt.config.json sets defaultBudgetBytes.
                        Soft ceiling for the output, in UTF-8 bytes (for map: a hard
@@ -124,9 +153,17 @@ OPTIONS
                        an entry containing / is a root-relative prefix.
   --cache <dir>        map only. Directory for the tags cache, keyed by content
                        hash. Only when given does the map write to disk at all.
-  --harness <id>       hooks only. Skip harness detection and target one id:
+  --harness <id>       Skip harness detection and target one id:
                        claude-code, codex, gemini, grok, hermes, cursor, opencode,
                        cline, kilocode, aider.
+                       Repeatable for setup; hooks takes one per run.
+  --yes                setup only. Non-interactive setup: the recipe's defaults, printed
+                       loudly as they are applied. Existing files are never
+                       overwritten — skipped with a note; hooks install edits
+                       them, and it asks per file.
+  --no-mcp             setup only. Setup only: skip the MCP registration step — the
+                       printed command and its note — for a hooks-only
+                       setup.
   --strict             agents only. Turn any lint finding into exit 1, for CI. Findings are
                        advisory by default: the rules are heuristics about somebody
                        else's house style, and enforcing them uninvited would be

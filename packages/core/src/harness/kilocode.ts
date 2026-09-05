@@ -9,7 +9,7 @@ import { instructionSnippet } from './snippet.ts';
  * manual enforcement legs the snippet has no room for. `remove` deletes it.
  */
 function kilocodeRulesSource(ctx: HarnessInstallContext): string {
-  return `${instructionSnippet(ctx.thresholdBytes, ctx.budgetBytes)}
+  return `${instructionSnippet(ctx.thresholdBytes, ctx.budgetBytes, ctx.writtenBy)}
 <!-- smelt:hooks v1 advisory notes -->
 
 KiloCode has no first-class hook API (Kilo-Org/kilocode#5827), so nothing above is

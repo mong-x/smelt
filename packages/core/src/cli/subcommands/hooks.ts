@@ -3,6 +3,7 @@ import process from 'node:process';
 import { CliUsageError } from '../../errors.ts';
 import { harnessesByTier, harnessNames } from '../../harness/registry.ts';
 import type { HarnessTier } from '../../harness/profile.ts';
+import { colorize } from '../lava.ts';
 import { runHooks } from '../hooks.ts';
 import { CLI_NAME } from '../shell.ts';
 import type { CliIo } from '../shell.ts';
@@ -84,10 +85,18 @@ export const hooksCommand: Subcommand<HooksInvocation, HooksInvocation> = {
           `${positionals.slice(2).join(', ')}.`,
       );
     }
+    // `--harness` is repeatable for setup; this verb wires one action per run, and a
+    // second id would be a second install the user believed had happened.
+    if (values.harness !== undefined && values.harness.length > 1) {
+      throw new CliUsageError(
+        `${CLI_NAME}: hooks takes one --harness per run — repeat the command for ` +
+          `each harness.`,
+      );
+    }
     return {
       mode: 'hooks',
       action,
-      ...(values.harness === undefined ? {} : { harness: values.harness }),
+      ...(values.harness === undefined ? {} : { harness: values.harness[0] }),
     };
   },
 
@@ -107,8 +116,9 @@ export const hooksCommand: Subcommand<HooksInvocation, HooksInvocation> = {
     }
     return await runHooks(resolved.action, resolved.harness, {
       input: io.initInput,
-      output: io.stdout,
+      output: (text) => io.stdout(colorize(text, io.color === true)),
       cwd: io.cwd ?? process.cwd(),
+      version: io.version,
     });
   },
 };

@@ -265,7 +265,7 @@ describe('smelt hooks remove', () => {
     writeFileSync(join(dir, 'CLAUDE.md'), '# Mine\n');
     await hooks('install', 'claude-code', ['', '', '', '', '', '', 'yes', 'yes', 'yes']);
 
-    const { output } = await hooks('remove', 'claude-code', ['yes', 'yes', 'yes']);
+    const { output } = await hooks('remove', 'claude-code', ['yes', 'yes', 'yes', 'yes']);
     expect(output).toContain('left untouched'); // the config stays; it says so
 
     const settings = readJson('.claude/settings.json');
@@ -284,7 +284,7 @@ describe('smelt hooks remove', () => {
 
   it('deletes a CLAUDE.md that was entirely ours, and reports nothing to do on a clean tree', async () => {
     await hooks('install', 'claude-code', DEFAULT_ANSWERS);
-    await hooks('remove', 'claude-code', ['yes', 'yes', 'yes']);
+    await hooks('remove', 'claude-code', ['yes', 'yes', 'yes', 'yes']);
     expect(existsSync(join(dir, 'CLAUDE.md'))).toBe(false);
     expect(existsSync(join(dir, '.claude/settings.json'))).toBe(false);
 
@@ -294,7 +294,7 @@ describe('smelt hooks remove', () => {
 
   it('a per-file no leaves that file alone', async () => {
     await hooks('install', 'claude-code', DEFAULT_ANSWERS);
-    await hooks('remove', 'claude-code', ['yes', 'no', 'no', 'no']);
+    await hooks('remove', 'claude-code', ['yes', 'no', 'no', 'no', 'no']);
     expect(existsSync(join(dir, '.claude/settings.json'))).toBe(true);
     expect(readFileSync(join(dir, 'CLAUDE.md'), 'utf8')).toContain(SNIPPET_START_MD);
   });

@@ -4,6 +4,7 @@ import { lintAgents, overBudgetBytes } from '../../agents/lint.ts';
 import type { AgentsLintReport } from '../../agents/lint.ts';
 import { CliUsageError } from '../../errors.ts';
 import { readTree } from '../../ops/inputs.ts';
+import { colorize } from '../lava.ts';
 import { runAgentsSplit } from '../agents.ts';
 import { CONFIG_FILE_NAME } from '../config.ts';
 import type { LoadedConfig } from '../config.ts';
@@ -235,7 +236,7 @@ async function runSplit(run: ResolvedAgentsRun, io: CliIo): Promise<number> {
   }
   return await runAgentsSplit({
     input: io.initInput,
-    output: io.stdout,
+    output: (text) => io.stdout(colorize(text, io.color === true)),
     cwd: io.cwd ?? process.cwd(),
     dir: run.dir,
   });
